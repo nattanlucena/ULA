@@ -1,6 +1,3 @@
-var fs = require('fs');
-var file = './Utils/dataMemory';
-
 module.exports = {
     /**
      *
