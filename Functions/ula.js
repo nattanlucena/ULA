@@ -72,7 +72,7 @@ module.exports = {
 
 
 function _validateNumbers (x, y) {
-    if (Number.isNaN(parseInt(x)) || Number.isNaN(parseInt(y))) {
+    if (Number.isNaN(parseFloat(x)) || Number.isNaN(parseFloat(y))) {
         throw new Error('Invalid args');
     }
 }
