@@ -6,10 +6,10 @@ module.exports = {
      * @returns {number}
      * @constructor
      */
-    ADD: function(x, y) {
+    '00': function(x, y) {
         _validateNumbers(x, y);
 
-        return parseFloat(x) + parseFloat(y);
+        return parseInt(x) + parseInt(y);
     },
     /**
      *
@@ -18,10 +18,10 @@ module.exports = {
      * @returns {number}
      * @constructor
      */
-    SUB: function(x , y) {
+    '01': function(x , y) {
         _validateNumbers(x, y);
 
-        return parseFloat(x) - parseFloat(y);
+        return parseInt(x) - parseInt(y);
     },
     /**
      *
@@ -30,11 +30,11 @@ module.exports = {
      * @returns {number}
      * @constructor
      */
-    MUL: function(x, y) {
+    '10': function(x, y) {
         _validateNumbers(x, y);
 
-        let result = parseFloat(x) * parseFloat(y);
-        return parseFloat(result.toFixed(5));
+        let result = parseInt(x) * parseInt(y);
+        return parseInt(result.toFixed(5));
     },
     /**
      *
@@ -43,15 +43,15 @@ module.exports = {
      * @returns {number}
      * @constructor
      */
-    DIV: function (x, y) {
+    '11': function (x, y) {
         _validateNumbers(x, y);
 
         if (Number(y) === 0) {
             throw new Error('Illegal arithmetical operation: division by zero');
         }
 
-        let result = parseFloat(x)/parseFloat(y);
-        return parseFloat(result.toFixed(5));
+        let result = parseInt(x)/parseInt(y);
+        return parseInt(result);
     },
     /**
      *
@@ -60,16 +60,17 @@ module.exports = {
      * @returns {*}
      * @constructor
      */
-    MOV: function (x, y) {
-        let tmp;
-        tmp = parseFloat(y);
-        return tmp;
+    BMI: function (x) {
+        if (Number.isNaN(parseInt(x))) {
+            throw new Error('Invalid args');
+        }
+        return parseInt(x) > 0;
     }
 };
 
 
 function _validateNumbers (x, y) {
-    if (Number.isNaN(parseFloat(x)) || Number.isNaN(parseFloat(y))) {
+    if (Number.isNaN(parseInt(x)) || Number.isNaN(parseInt(y))) {
         throw new Error('Invalid args');
     }
 }

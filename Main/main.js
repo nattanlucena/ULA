@@ -4,17 +4,22 @@ const constants = require('../Constants/constants');
 const INST_FILE = './data/instructions';
 const MEM_FILE = './data/dataMemory';
 
-const instructions = utils.getInstructions(INST_FILE);
-const dataMemory = utils.getDataMemory(MEM_FILE);
+
 
 let PC = 0;
 let MAR; // Endereço na memória para uma operação de leitura ou escrita.
-let IR;
-let MBR = {};
-let ICC;
+let IR; // Guarda a instrução recuperada no FETCH do endereço de memória
+let MBR; // Buffer de memória que contém o último valor lido
+let ICC; // Operação a ser realizada no ciclo de instruções
 
 let tempRegister = {};
-let tempMemory = {};
+const instructions = utils.getInstructions(INST_FILE);
+const dataMemory = utils.getDataMemory(MEM_FILE);
+const dataMemoryBus = {};
+dataMemory.forEach(function (item) {
+    let s = item.split(' ');
+    dataMemoryBus[s[0]] = s[1];
+});
 
 // Operações do ciclo de instrução
 const OPERATION = {
@@ -27,19 +32,35 @@ const OPERATION = {
     EXIT: 'EXIT'
 };
 
+const OPCODE = {
+    'ADD': '00',
+    'SUB': '01',
+    'MUL': '10',
+    'DIV': '11',
+    'BMI': 'BMI', // Verifica se o valor de um registrador, memória ou de uma constante é negativo.  Caso a condição seja satisfeita, pula para o endereço passado na instrução
+    'JUMP': 'JUMP',
+    'LOAD': 'LD',
+};
+
 /**
  * Main app
  */
 function exec(){
+    /**
+     *
+     */
     let performs = 0;
     let decoded = null;
     let register = {};
     let operationResult = null;
-    let addressWrite = [];
+    let dataBus = {};
     let optCode;
     let valueX;
     let valueY;
     let countCycle = 0;
+
+    console.log('\n');
+    console.log(' ---- Iniciando execução de instruções ---- ');
 
     // Executa a primeira instrução pelo FETCH
     ICC = OPERATION.FETCH;
@@ -47,223 +68,227 @@ function exec(){
     while (performs < instructions.length) {
         switch (ICC) {
             case OPERATION.FETCH: {
+                countCycle = countCycle + 1;
+                console.log('\n');
+                console.log('Ciclo:', countCycle);
+
                 MAR = PC;
-                IR = instructions[MAR].split(':');
-                let address = IR[0];
-                console.log(`... FETCH no endereço: ${address}`);
+                IR = instructions[MAR].split(' ');
                 ICC = OPERATION.DECODE;
+                console.log(`... FETCH no endereço: FF${MAR}`);
                 break
             }
             case OPERATION.DECODE: {
-                decoded = IR[1].trim().split(' ');
-                console.log(`..... DECODE: ${decoded.toString()}`);
-                optCode = decoded[0];
-                valueX = _getDataFromMemory(decoded[2]);
-                valueY = _getDataFromMemory(decoded[3]);
+                // Decodifica e busca os operandos
+                try {
+                    console.log(`..... DECODE: ${IR.toString()}`);
 
-                MBR = {};
-                if (valueY) {
-                    let type = !isNaN(decoded[3])  ? 'C' : decoded[3];
-                    MBR[type] = valueY;
-                } else {
-                    let type = !isNaN(decoded[2]) ? 'C' : decoded[2];
-                    MBR[type] = valueX;
-                }
-
-                ICC = OPERATION.EXECUTE;
-                break;
-/*
-                if (Object.keys(MBR).length) {
-                    let key = Object.keys(MBR)[0];
-                    if (key === decoded[2]) {
-                        valueX = MBR[key];
-                    } else if (key === decoded[3]) {
-                        valueY = MBR[key];
+                    // Decodifica
+                    decoded = IR;
+                    let operation = decoded[0];
+                    let found = false;
+                    Object.keys(OPCODE).forEach(function(key) {
+                        if (key === operation) {
+                            found = true;
+                        }
+                    });
+                    if (!found) {
+                        throw new Error(`Invalid operation: ${operation}`);
                     }
-                } else {
-                    valueX = _getDataFromMemory(decoded[2]);
-                    valueY = _getDataFromMemory(decoded[3]);
-                }
 
-                let verifyIndirectX = typeof valueX === 'number' ? valueX :_verifyIndirectMemoryAccess(valueX);
-                let verifyIndirectY = typeof valueY === 'number' ? valueY : _verifyIndirectMemoryAccess(valueY);
+                    optCode = OPCODE[operation];
+                    valueX = '';
+                    valueY = '';
+                    if (decoded.length > 2) {
+                        // Busca os operandos
+                        valueX = _getDataFromMemory(decoded[2]);
+                        valueY = _getDataFromMemory(decoded[3]);
 
-                if (verifyIndirectX && verifyIndirectX === 'next') {
-                    tempMemory[decoded[2]] = valueX;
-                    MBR[decoded[2]] = valueX;
-                    ICC = OPERATION.INDIRECT;
-                } else if (verifyIndirectY && verifyIndirectY === 'next') {
-                    tempMemory[decoded[3]] = valueY;
-                    MBR[decoded[3]] = valueY;
-                    ICC = OPERATION.INDIRECT;
+                        // Caso ocorra algum acesso indireto à memória
+                        if (valueX && isNaN(valueX) && valueX.split('')[0] === 'A') {
+                            console.log(`..... INDIRECT MEMORY ACCESS: ${decoded[2]}=${valueX}`);
+                            valueX = _getDataFromMemory(valueX);
+                            dataMemoryBus[decoded[2]] = valueX;
+                        }
 
-                } else {
-                    MBR = {};
-                    if (verifyIndirectY) {
-                        let type = !isNaN(decoded[3])  ? 'C' : decoded[3];
-                        MBR[type] = parseInt(verifyIndirectY);
+                        if (valueY && isNaN(valueY) && valueY.split('')[0] === 'A') {
+                            console.log(`..... INDIRECT MEMORY ACCESS: ${decoded[3]}=${valueY}`);
+                            valueY = _getDataFromMemory(valueY);
+                            dataMemoryBus[decoded[3]] = valueY;
+                        }
+
                     } else {
-                        let type = !isNaN(decoded[2]) ? 'C' : decoded[2];
-                        MBR[type] = parseInt(verifyIndirectX);
+                        valueX = !isNaN(decoded[1]) ? parseInt(decoded[1]) : _getDataFromMemory(decoded[1]);
                     }
-                    valueX = verifyIndirectX;
-                    valueY = verifyIndirectY;
+
+                    valueX = parseInt(valueX);
+                    valueY = parseInt(valueY);
+                    MBR = valueY ? valueY : valueX;
                     ICC = OPERATION.EXECUTE;
+                    break;
+                } catch(err) {
+                    console.log('ERROR: ',  err.message);
+                    ICC = OPERATION.EXIT;
+                    break;
                 }
-                */
-            }
-            case OPERATION.INDIRECT: {
-                console.log(`..... INDIRECT MEMORY ACCESS: ${JSON.stringify(MBR)}`);
-                let key = Object.keys(MBR)[0];
-                let value = Object.values(MBR)[0];
-                let result = _verifyIndirectMemoryAccess(value);
-                MBR[key] = parseInt(result);
-                ICC = OPERATION.EXECUTE;
-                break;
             }
             case OPERATION.EXECUTE: {
                 try {
-
-                    let verifyIndirectX = typeof valueX === 'number' ? valueX :_verifyIndirectMemoryAccess(valueX);
-                    let verifyIndirectY = typeof valueY === 'number' ? valueY : _verifyIndirectMemoryAccess(valueY);
-
-                    if (verifyIndirectX && verifyIndirectX === 'next') {
-                        tempMemory[decoded[2]] = valueX;
-                        MBR[decoded[2]] = valueX;
-                        ICC = OPERATION.INDIRECT;
-                    } else if (verifyIndirectY && verifyIndirectY === 'next') {
-                        tempMemory[decoded[3]] = valueY;
-                        MBR[decoded[3]] = valueY;
-                        ICC = OPERATION.INDIRECT;
-
-                    } else {
-                        MBR = {};
-                        if (verifyIndirectY) {
-                            let type = !isNaN(decoded[3])  ? 'C' : decoded[3];
-                            MBR[type] = parseInt(verifyIndirectY);
-                        } else {
-                            let type = !isNaN(decoded[2]) ? 'C' : decoded[2];
-                            MBR[type] = parseInt(verifyIndirectX);
+                    switch (optCode) {
+                        case OPCODE.JUMP: {
+                            PC = parseInt(PC) + parseInt(decoded[1]);
+                            performs = parseInt(performs) + parseInt(decoded[1]);
+                            console.log(`....... EXECUTE (Salto incondicional): salto para endereço FF${PC}`);
+                            ICC = OPERATION.FETCH;
+                            break;
                         }
-                        valueX = verifyIndirectX;
-                        valueY = verifyIndirectY;
+                        case OPCODE.LOAD: {
+                            MBR = decoded[2];
+                            ICC = OPERATION.WRITE;
+                            console.log('....... EXECUTE: ', MBR);
+                            break;
+                        }
+                        default: {
+                            // Verifica se os argumentos são válidos e executa a operação decodificada
+                            operationResult = utils.performOperations(optCode, valueX, valueY);
+
+                            // Salto condicional: pula para 2 instruções a frente
+                            if (typeof operationResult === 'boolean') {
+                                if (operationResult) {
+                                    console.log(`....... EXECUTE (Salto condicional): valor de ${decoded[1]} menor que 0`);
+                                    PC = parseInt(PC) + parseInt(decoded[2]);
+                                    performs = parseInt(performs) + parseInt(decoded[2]);
+                                } else {
+                                    // Continua na próxima instrução
+                                    PC = PC + 1;
+                                    performs = performs + 1;
+                                }
+
+                                MBR = 0;
+                                ICC = OPERATION.FETCH;
+                                break;
+
+                            } else if (operationResult === 0) {
+                                MBR = 1;
+                                PC = PC + 1;
+                                performs = performs + 1;
+                                ICC = OPERATION.FETCH;
+                                console.log(`....... EXECUTE (Salto condicional): valor de ${decoded[1]} igual que 0`);
+                                break;
+
+                            } else {
+                                MBR = operationResult;
+                                ICC = OPERATION.WRITE;
+                                console.log('....... EXECUTE: ', MBR);
+                                break;
+                            }
+                        }
                     }
-
-                    // Verifica se os argumentos são válidos
-                    if (optCode === 'LOAD') {
-                        if (!decoded[1]) {
-                            throw new Error ('Invalid args');
-                        }
-                        operationResult = valueX;
-                    } else if (optCode === 'STORE') {
-                        if (!decoded[2] || Number.isNaN(parseInt(valueX))) {
-                            throw new Error ('Invalid args');
-                        }
-                        operationResult = valueX;
-                    } else {
-                        operationResult = utils.performOperations(optCode, valueX, valueY);
-                    }
-                    ICC = OPERATION.WRITE;
-                    console.log('....... EXECUTE: ', operationResult);
+                    break;
                 } catch(err) {
-                    console.log('ERROR: ', err.message || 'Invalid args');
-                    console.log('INTERRUPTION: executa a próxima instrução');
-                    PC = PC + 1;
-                    performs = performs + 1;
-                    countCycle = countCycle + 1;
-                    valueX = '';
-                    valueY = '';
-                    console.log('\n');
-                    ICC = OPERATION.FETCH;
+                    console.log('ERROR: ',  err.message);
+                    ICC = OPERATION.EXIT;
+                    break;
                 }
-                break;
             }
             case OPERATION.WRITE: {
                 // Salva o valor no registrador da instrução
-                register[decoded[2]] = operationResult;
-                // Salva os dados num array de registradores temporários
-                tempRegister[decoded[1]] = operationResult;
-                console.log(`......... WRITE no registrador da cpu ${decoded[1]}: ${operationResult}`);
-                ICC = OPERATION.WRITEBACK;
-                break;
+                try {
+                    if (decoded[1].split('')[0] !== 'R') {
+                        throw new Error('Invalid reg type');
+                    }
+                    register[decoded[2]] = MBR;
+                    // Salva os dados num array de registradores temporários
+                    tempRegister[decoded[1]] = MBR;
+                    console.log(`......... WRITE no registrador da cpu ${decoded[1]}: ${MBR}`);
+                    ICC = OPERATION.WRITEBACK;
+                    break;
+                } catch(err) {
+                    console.log('ERROR: ',  err.message);
+                    ICC = OPERATION.EXIT;
+                    break;
+                }
             }
             case OPERATION.WRITEBACK: {
-                // Salva o valor no endereço de memória FF
-                let address = {};
-                address[IR[0]] = register[decoded[2]];
-                addressWrite.push(address);
-                console.log(`........... WRITEBACK no endereço de memória ${IR[0]}: ${register[decoded[2]]}`);
+                // Barramento com as operações executadas e seus resultados
+                dataBus[`FF${MAR}`] = register[decoded[2]];
+                // Salva o valor no endereço de memória FF:
+                dataMemoryBus[`FF${MAR}`] = register[decoded[2]];
+                console.log(`........... WRITEBACK no endereço de memória FF${MAR}: ${register[decoded[2]]}`);
                 PC = PC + 1;
                 performs = performs + 1;
-                console.log('\n');
                 ICC = OPERATION.FETCH;
-                countCycle = countCycle + 1;
                 break;
             }
-            default:
+            case OPERATION.EXIT: {
+                console.log('\n');
+                console.log('...Finalizando a aplicação...');
+                console.log('Bye!');
+                console.log('\n');
+                process.exit(1);
+            }
+            default:{
+            }
                 break;
         }
     }
 
-    console.log('Resultado da execução das instruções de cada operador completamente executado: \n', addressWrite);
+    // Escreve a memória final em arquivo
+    utils.writeMemory(_sortMemoryData(dataMemoryBus));
+
+    console.log('\n');
+    console.log('Resultado da execução das instruções de cada operador completamente executado: \n', dataBus);
     console.log('\n');
     console.log('Dados do registrador na memória: \n', tempRegister);
     console.log('\n');
-    console.log('Registrador ordenado em ordem crescente', _sort(tempRegister));
-    console.log('\n');
-    console.log('Memória temporária', tempMemory);
-    console.log('\n');
     console.log('Ciclos de instrução: ', countCycle);
     console.log('\n');
-}
+    }
 
 /**
  *
- * @param value
+ * @param address
  * @returns {string|Number}
  */
-function _verifyIndirectMemoryAccess(value) {
-    let result = '';
-    if (value) {
-        if (value.split('')[0] === 'A') {
-            if (Object.keys(tempMemory).length !== 0) {
-                result = 'next';
-                Object.keys(tempMemory).forEach(function(item) {
-                    if (tempMemory[item] === value) {
-                        result = _indirectMemoryAccess(tempMemory[item]);
-                        tempMemory[item] = parseInt(result);
-                    }
-                });
-            } else {
-                result = 'next';
-            }
-        } else {
-            result = value;
+function _verifyIndirectMemoryAccess(address) {
+    let result = undefined;
+
+    Object.keys(dataMemoryBus).forEach(function(key) {
+        if (key === address) {
+            result = dataMemoryBus[key];
         }
+    });
+
+    if (result === undefined) {
+        throw new Error('Invalid memory address');
     }
 
     return result;
 }
 // Recupera o valor do endereço na memória. Caso o valor seja outro endereço, realiza uma nova busca
 function _getDataFromMemory(value) {
-    let result = '';
+    let result = undefined;
     if (value) {
         let val1 = value.split('')[0];
 
         if (val1 === 'R') {
             result = _findInTempReg(value);
+
+            if (result === undefined) {
+                throw new Error('Invalid register');
+            }
         } else if (val1 === 'A') {
             // Primeiramente, procura o valor do registrador nos registradores temporários
             result = _findInMemory(value);
+            if (result === undefined) {
+                throw new Error('Invalid memory address');
+            }
         } else {
             result = value;
         }
     }
 
     return result;
-}
-function _indirectMemoryAccess(value) {
-    return  _findInMemory(value);
 }
 
 function _findInTempReg(value){
@@ -279,25 +304,25 @@ function _findInTempReg(value){
 }
 // Recupera o valor de um endereço de memória
 function _findInMemory(address) {
-    let result = '';
+    let result = undefined;
     let compare = `${address}`;
-    dataMemory.forEach(function(item) {
-        if (item.split(' ')[0].toUpperCase() === compare.toUpperCase()){
-            result = item.split(' ')[1];
+
+    Object.keys(dataMemoryBus).forEach(function(key){
+        if (key.toUpperCase() === compare.toUpperCase()) {
+            result = dataMemoryBus[key];
         }
     });
 
     return result;
 }
 
-// TODO: finalizar script de sort
-function _sort(yourObject) {
-    //console.log(typeof reg);
-    return Object.keys(yourObject).sort((a, b) => {
-        return yourObject[a] - yourObject[b]
-    }).reduce((prev, curr, i) => {
-        prev[i] = yourObject[curr];
+function _sortMemoryData(memory) {
+    return Object.keys(memory).sort((a, b) => {
+        return memory[a] - memory[b]
+    }).reduce((prev, curr) => {
+        prev[curr] = memory[curr];
         return prev
     }, {});
 }
+
 exec();

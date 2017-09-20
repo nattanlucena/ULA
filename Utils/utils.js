@@ -17,5 +17,8 @@ module.exports = {
     },
     performOperations: function(operation, x, y){
         return ula[operation](x, y);
+    },
+    writeMemory: function(data) {
+        return functions.writeMemoryResult(data);
     }
 };

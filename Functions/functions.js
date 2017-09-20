@@ -2,13 +2,25 @@ var fs = require('fs');
 var file = './Utils/dataMemory';
 // var file = './Utils/instructions';
 
+const MEMORY_RESULT_FILE = './data/memory-result';
+
 module.exports = {
 
     readInstructions: function (file) {
         try {
             let data = fs.readFileSync(file);
+            let arr = data.toString().split('\n');
+            let res = [];
 
-            return data.toString().split('\n');
+            // Remove as linhas em branco
+            for (let i in arr) {
+                let trimmed = arr[i].trim();
+                if (trimmed .length !== 0) {
+                    res.push(trimmed);
+                }
+
+            }
+            return res;
         } catch (err) {
             if (err.code === 'ENOENT') {
                 console.error('File not exists');
@@ -16,6 +28,29 @@ module.exports = {
             }
             throw err;
         }
+    },
+    writeMemoryResult: function (data) {
+        let write = [];
+        if (typeof data === 'object') {
+            Object.keys(data).forEach(function(key) {
+                let d = `${key} ${data[key]}`;
+                write.push(d);
+            })
+        } else {
+            write = data;
+        }
+
+        fs.unlink(MEMORY_RESULT_FILE, function(err) {
+            if (err && err.code !== 'ENOENT') {
+                console.log('err', err);
+            }
+            fs.appendFile(MEMORY_RESULT_FILE, write.join('\r\n'), function(err) {
+                if (err) {
+                    console.log('err', err);
+                }
+                console.log('done!');
+            });
+        });
     },
     /**
      *
